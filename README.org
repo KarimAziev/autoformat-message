@@ -25,7 +25,8 @@ Download the source code and put it wherever you like and add the directory to t
              :repo "KarimAziev/autoformat-message"
              :type git
              :host github)
-  :commands (autoformat-message))
+  :commands (autoformat-message)
+  :hook (emacs-lisp-mode . autoformat-message-mode))
 
 #+end_src
 
