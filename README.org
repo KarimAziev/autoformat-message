@@ -1,0 +1,45 @@
+* autoformat-message
+
+Minor mode to automatically add format string with %s escapes before save.
+
+** Installation
+
+*** Manual
+
+Download the source code and put it wherever you like and add the directory to the load path:
+
+#+begin_src elisp :eval no
+
+(add-to-list 'load-path "/path/to/autoformat-message")
+
+(require 'autoformat-message)
+
+#+end_src
+
+*** With use-package and straight
+
+#+begin_src elisp :eval no
+
+(use-package autoformat-message
+  :straight (autoformat-message
+             :repo "KarimAziev/autoformat-message"
+             :type git
+             :host github)
+  :commands (autoformat-message))
+
+#+end_src
+
+** Minor mode
+
+*** ~autoformat-message-mode~
+Inside message automatically add format string with %s escapes before save.
+** Commands
+
+*** ~autoformat-message~
+Inside message automatically add format string with %s escapes.
+** Customization
+
+*** ~autoformat-message-types~
+Allowed functions calls to format.
+*** ~autoformat-message-top-level-symbols~
+Allowed functions to get title.
