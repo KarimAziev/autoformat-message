@@ -134,10 +134,10 @@ ARGS is ."
              (indent (+ (- max (length it))
                         align-indent))
              (parts (list
-                     "|\t"
+                     "|\s"
                      it
                      (make-string indent ?\ )
-                     "\t|\t"
+                     "\s|\s"
                      "%s"))
              (res (apply #'concat parts)))
         (push res result-list)))
