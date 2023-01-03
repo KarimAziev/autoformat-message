@@ -170,7 +170,8 @@ ARGS is ."
   "Make message from SEXP with TITLE.
 COL is column number for format string."
   (let* ((current-description
-          (when (stringp (nth 1 sexp)) 1))
+          (when (stringp (nth 1 sexp))
+            (nth 1 sexp)))
          (parts (seq-drop sexp (if current-description 2 1)))
          (func (prin1-to-string (car sexp)))
          (rows (split-string
