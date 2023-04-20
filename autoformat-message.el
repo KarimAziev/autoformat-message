@@ -71,6 +71,12 @@
   :type '(repeat symbol)
   :group 'autoformat-message)
 
+(defcustom autoformat-message-complete-fn 'autoformat-message-read-elisp-items
+  "Function that return symbol name to log.
+Used in `autoformat-message-insert-message-or-complete'."
+  :type 'function
+  :group 'autoformat-message)
+
 (defun autoformat-message-move-with (fn &optional n)
   "Move by calling FN N times.
 Return new position if changed, nil otherwise."
@@ -209,6 +215,7 @@ COL is column number for format string."
                                  current-description))
         (string-join (split-string current-description "%s" t) "\s")))))
 
+;;;###autoload
 (defun autoformat-message ()
   "Inside message automatically add format string with %s escapes."
   (interactive)
@@ -236,6 +243,56 @@ COL is column number for format string."
                               (autoformat-message-current-function-name)))))
                  (replace-region-contents start end (lambda ()
                                                       rep)))))))))))
+(defun autoformat-message-insert (item)
+  "Complete or insert ITEM."
+  (apply #'insert
+         (if-let ((current-word
+                   (symbol-at-point)))
+             (progn
+               (if
+                   (string-prefix-p
+                    (symbol-name
+                     current-word)
+                    item)
+                   (list
+                    (substring-no-properties
+                     item
+                     (length
+                      (symbol-name
+                       current-word))))
+                 (list "\s" item)))
+           (list item))))
+(defun autoformat-message-read-elisp-items ()
+  "Read elisp items in minibuffer with completions."
+  (completing-read "Log: "(append
+                           (seq-filter (lambda (it)
+                                         (and (symbolp it)
+                                              (not (keywordp it))
+                                              (boundp it)))
+                                       obarray)
+                           (elisp--local-variables))))
+
+;;;###autoload
+(defun autoformat-message-insert-message-or-complete ()
+  "Insert message at point with items.
+If point is inside message call, just insert item."
+  (interactive)
+  (let ((item (or (if (functionp autoformat-message-complete-fn)
+                      (funcall autoformat-message-complete-fn)
+                    (autoformat-message-read-elisp-items)))))
+    (if (catch 'inside-message
+          (dolist (it (nth 9 (syntax-ppss (point))))
+            (save-excursion
+              (goto-char it)
+              (when (eq (car-safe (sexp-at-point)) 'message)
+                (throw 'inside-message t)))))
+        (progn
+          (autoformat-message-insert item)
+          (autoformat-message))
+      (insert (concat "(message " item
+                      ")"))
+      (forward-char -1)
+      (autoformat-message))))
 
 ;;;###autoload
 (define-minor-mode autoformat-message-mode
