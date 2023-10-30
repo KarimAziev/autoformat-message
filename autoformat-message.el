@@ -128,7 +128,7 @@ ARGS is ."
   (setq args (mapcar (lambda (it)
                        (capitalize
                         (replace-regexp-in-string
-                         "[^a-zZ-A0-9]"
+                         "[^a-z0-9]"
                          "\s"
                          (format "%s" it))))
                      args))
@@ -214,6 +214,55 @@ COL is column number for format string."
                  (string-match-p "%s"
                                  current-description))
         (string-join (split-string current-description "%s" t) "\s")))))
+
+;;;###autoload
+(defun autoformat-message-cond-clauses ()
+  "Inside cond automatically add format string with %s escapes."
+  (interactive)
+  (let ((name (autoformat-message-current-function-name)))
+    (save-excursion
+      (when-let ((start (autoformat-message-up-list-until-nil
+                         (pcase (sexp-at-point)
+                           (`(cond ,(pred listp) . ,_rest)
+                            (point))))))
+        (goto-char start)
+        (down-list)
+        (forward-sexp 2)
+        (forward-sexp -1)
+        (let ((count 0))
+          (while (ignore-errors
+                   (when (listp (sexp-at-point))
+                     (save-excursion
+                       (down-list 1)
+                       (forward-sexp 1)
+                       (skip-chars-forward "\s\t\n\r\f")
+                       (pcase (sexp-at-point)
+                         (`(message
+                            ,(and (pred stringp)
+                                  (pred (string-match-p (concat
+                                                         "^"
+                                                         (if name
+                                                             (regexp-quote name)
+                                                           "")
+                                                         " "
+                                                         "clause [0-9]+$")))))
+                          (pcase-let
+                              ((`(,beg . ,end)
+                                (bounds-of-thing-at-point 'sexp)))
+                            (delete-region beg end))))
+                       (insert (if name (format "(message \"%s clause %s\")\n"
+                                                name
+                                                count)
+                                 (format
+                                  "(message \"clause %s\")\n" count))))
+                     (forward-sexp 2)
+                     (forward-sexp -1)
+                     (setq count (1+ count))))))
+        (when (memq (car-safe (sexp-at-point)) autoformat-message-types)
+          (pcase-let ((`(,beg . ,end)
+                       (bounds-of-thing-at-point 'sexp)))
+            (delete-region beg end)))
+        (insert)))))
 
 ;;;###autoload
 (defun autoformat-message ()
