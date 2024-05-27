@@ -1,4 +1,4 @@
-;;; autoformat-message.el --- Configure message -*- lexical-binding: t -*-
+;;; autoformat-message.el --- Automatically add format specifiers to message calls -*- lexical-binding: t -*-
 
 ;; Copyright © 2020-2022 Karim Aziiev <karim.aziiev@gmail.com>
 
@@ -25,7 +25,9 @@
 
 ;;; Commentary:
 
-;; This file configures operations with message
+;; This package provides functionality to automatically format `message' calls
+;; in Emacs Lisp code, ensuring that format strings with `%s' escapes are added
+;; where necessary.
 
 ;;; Code:
 

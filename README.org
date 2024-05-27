@@ -1,6 +1,6 @@
 * autoformat-message
 
-Minor mode to automatically add format string with %s escapes before save.
+Minor mode that automatically adds format specifiers to Emacs Lisp message calls.
 
 ** Installation
 
