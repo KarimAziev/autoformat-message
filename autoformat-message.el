@@ -7,6 +7,7 @@
 ;; Version: 0.1.0
 ;; Keywords: tools
 ;; Package-Requires: ((emacs "27.1"))
+;; SPDX-License-Identifier: GPL-3.0-or-later
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -124,102 +125,110 @@ Return new position if changed, nil otherwise."
          (when (memq type  autoformat-message-top-level-symbols)
            (format "%s" name)))))))
 
-(defun autoformat-message-make-description (args)
-  "Message make description.
-ARGS is ."
-  (setq args (mapcar (lambda (it)
-                       (capitalize
-                        (replace-regexp-in-string
-                         "[^a-z0-9]"
-                         "\s"
-                         (format "%s" it))))
-                     args))
-  (let ((result-list)
-        (max (length (car (seq-sort-by #'length '> args))))
-        (align-indent 1))
-    (dotimes (i (length args))
-      (let* ((it (string-trim (nth i args)))
-             (indent (+ (- max (length it))
-                        align-indent))
-             (parts (list
-                     "|\s"
-                     it
-                     (make-string indent ?\ )
-                     "\s|\s"
-                     "%s"))
-             (res (apply #'concat parts)))
-        (push res result-list)))
-    (string-join (reverse result-list) "\n")))
+(defun autoformat-message--count-specifier-matches (str)
+  "Return the count of specifier matches in the string STR.
 
-(defun autoformat-message-join-vars (sexps &optional col)
-  "Format SEXPS with indent COL."
-  (unless col (setq col 1))
-  (with-temp-buffer
-    (erase-buffer)
-    (goto-char (point-min))
-    (let ((strs (mapcar #'prin1-to-string sexps))
-          (row)
-          (acc-length 0))
-      (while (setq row (pop strs))
-        (let* ((l (length row))
-               (sum (+ acc-length l)))
-          (if (>= sum (- fill-column (or col 0)))
-              (progn
-                (insert "\n" (make-string col ?\ ) row)
-                (setq acc-length (length row)))
-            (insert "\s" row)
-            (setq acc-length (+ 2 sum)))))
-      (string-trim
-       (buffer-substring-no-properties
-        (point-min)
-        (point-max))))))
+Argument STR is the string to be searched for specifier matches."
+  (when (string-match-p "\\(?:%[SXc-gosx]\\)" str)
+    (let ((count 0))
+      (with-temp-buffer (insert str)
+                        (while
+                            (re-search-backward "\\(?:%[SXc-gosx]\\)" nil t 1)
+                          (setq count (1+ count))))
+      count)))
 
-(defun autoformat-message-make-message-str (sexp &optional col title)
-  "Make message from SEXP with TITLE.
-COL is column number for format string."
-  (let* ((current-description
-          (when (stringp (nth 1 sexp))
-            (nth 1 sexp)))
-         (parts (seq-drop sexp (if current-description 2 1)))
-         (func (prin1-to-string (car sexp)))
-         (rows (split-string
-                (autoformat-message-make-description (mapcar
-                                                      #'prin1-to-string
-                                                      parts))
-                "\n"))
-         (description (string-join
-                       (seq-map-indexed (lambda (it idx)
-                                          (if (= idx 0)
-                                              it
-                                            (concat
-                                             (make-string
-                                              (+ 2 col) ?\ )
-                                             it)))
-                                        rows)
-                       "\n"))
-         (vars (autoformat-message-join-vars parts
-                                             (+ 1 (or col 2)))))
-    (if (> (length parts) 0)
-        (let ((indent (make-string
-                       (+ 1 (or col
-                                2))
-                       ?\ )))
-          (concat "(" func "\s" "\""
-                  (if title
-                      (concat (format "%s" title)
-                              "\n"
-                              indent "\s")
-                    "")
-                  description "\"\n" indent
-                  vars ")"))
-      (when (and current-description
-                 (string-match-p "%s"
-                                 current-description))
-        (string-join (split-string current-description "%s" t) "\s")))))
+(defun autoformat-message--fix-message-at-point ()
+  "Fix the format string and arguments of a message call at point."
+  (let* ((sexp (sexp-at-point))
+         (rep
+          (pcase sexp
+            (`(,(and
+                 (pred (symbolp))
+                 sym
+                 (guard (memq sym autoformat-message-types))
+                 sym)
+               .
+               ,args)
+             (pcase args
+               (`(,(and
+                    (pred (stringp))
+                    format-str)
+                  .
+                  ,format-args)
+                (let ((specifiers-count (or (autoformat-message--count-specifier-matches
+                                             format-str)
+                                            0))
+                      (required-count (length format-args)))
+                  (cond ((> specifiers-count required-count)
+                         (let* ((remove-count
+                                 (- specifiers-count required-count))
+                                (description (with-temp-buffer
+                                               (insert format-str)
+                                               (while (> remove-count 0)
+                                                 (when (re-search-backward
+                                                        "\\(?:%[SXc-gosx]\\)"
+                                                        nil t 1)
+                                                   (replace-match ""))
+                                                 (setq remove-count (1- remove-count)))
+                                               (buffer-string))))
+                           `(,sym ,description ,@format-args)))
+                        ((< specifiers-count required-count)
+                         (let ((description (autoformat-message--format-args
+                                             (seq-drop format-args
+                                                       specifiers-count))))
+                           `(,sym ,(concat format-str " " description)
+                             ,@format-args))))))
+               (_
+                (let ((description (autoformat-message--format-args args)))
+                  `(,sym ,description ,@args))))))))
+    (when rep
+      (pcase-let ((`(,beg . ,end)
+                   (bounds-of-thing-at-point 'sexp)))
+        (replace-region-contents beg end (lambda ()
+                                           (prin1-to-string rep)))))))
+
+
+(defun autoformat-message--format-args (args)
+  "Format a list of ARGS into a descriptive string with indexed labels.
+
+Argument ARGS is a list of items to be formatted and concatenated."
+  (let ((result)
+        (count))
+    (while args
+      (setq count (1+ (or count 0)))
+      (let ((item (car args)))
+        (setq args (cdr args))
+        (let* ((label
+                (pcase item
+                  (`(funcall
+                     (,(or 'quote 'function)
+                      ,(and (pred (symbolp)) sym))
+                     .
+                     ,_)
+                   (format "funcall `%s'" (symbol-name sym)))
+                  (`(,(and (pred (symbolp)) sym)
+                     .
+                     ,_)
+                   (format "funcall `%s'" (symbol-name sym)))
+                  ((pred vectorp))
+                  ((pred listp))
+                  ((pred numberp)
+                   (format "%s" item))
+                  ((pred symbolp)
+                   (symbol-name item))
+                  ((pred stringp) item)
+                  (_ (format "%s" item)))))
+          (setq label (concat (unless (and (= count 1)
+                                           (not args))
+                                (concat (format "%d" count)
+                                        (if label ". " "")))
+                              label (if label "=") "`%S'"))
+          (setq result (push label result)))))
+    (string-join (reverse result) ", ")))
 
 ;;;###autoload
 (defun autoformat-message-cond-clauses ()
-  "Inside cond automatically add format string with %s escapes."
+  "Format `cond' clauses by inserting or updating `message' statements."
   (interactive)
   (let ((name (autoformat-message-current-function-name)))
     (save-excursion
@@ -268,7 +277,7 @@ COL is column number for format string."
 
 ;;;###autoload
 (defun autoformat-message ()
-  "Inside message automatically add format string with %s escapes."
+  "Format the message call at the current point if it matches specified types."
   (interactive)
   (save-excursion
     (autoformat-message-up-list-until-nil
@@ -276,26 +285,12 @@ COL is column number for format string."
        (when (listp sexp)
          (let ((type (car sexp)))
            (when (memq type autoformat-message-types)
-             (when-let* ((bounds (bounds-of-thing-at-point 'sexp))
-                         (column
-                          (+ (current-column)
-                             (1+
-                              (length
-                               (prin1-to-string
-                                (car
-                                 (memq type
-                                       autoformat-message-types)))))))
-                         (start (car bounds))
-                         (end (cdr bounds)))
-               (when-let ((rep
-                           (save-match-data
-                             (autoformat-message-make-message-str
-                              sexp column
-                              (autoformat-message-current-function-name)))))
-                 (replace-region-contents start end (lambda ()
-                                                      rep)))))))))))
+             (autoformat-message--fix-message-at-point))))))))
+
 (defun autoformat-message-insert (item)
-  "Complete or insert ITEM."
+  "Insert ITEM, adjusting for the current word at point if it matches a prefix.
+
+Argument ITEM is the string to be inserted into the buffer."
   (apply #'insert
          (if-let ((current-word
                    (symbol-at-point)))
@@ -314,7 +309,7 @@ COL is column number for format string."
                  (list "\s" item)))
            (list item))))
 (defun autoformat-message-read-elisp-items ()
-  "Read elisp items in minibuffer with completions."
+  "Read a symbol from the minibuffer, excluding keywords, with completion."
   (completing-read "Log: "(append
                            (seq-filter (lambda (it)
                                          (and (symbolp it)
@@ -325,8 +320,7 @@ COL is column number for format string."
 
 ;;;###autoload
 (defun autoformat-message-insert-message-or-complete ()
-  "Insert message at point with items.
-If point is inside message call, just insert item."
+  "Insert a formatted message or complete an item based on context."
   (interactive)
   (let ((item (or (if (functionp autoformat-message-complete-fn)
                       (funcall autoformat-message-complete-fn)
