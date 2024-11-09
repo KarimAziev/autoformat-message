@@ -84,13 +84,13 @@ Used in `autoformat-message-insert-message-or-complete'."
   "Move by calling FN N times.
 Return new position if changed, nil otherwise."
   (unless n (setq n 1))
-  (when-let ((str-start (nth 8 (syntax-ppss (point)))))
+  (when-let* ((str-start (nth 8 (syntax-ppss (point)))))
     (goto-char str-start))
   (let ((init-pos (point))
         (pos)
         (count n))
     (while (and (not (= count 0))
-                (when-let ((end (ignore-errors
+                (when-let* ((end (ignore-errors
                                   (funcall fn)
                                   (point))))
                   (unless (= end (or pos init-pos))
@@ -118,7 +118,7 @@ Return new position if changed, nil otherwise."
 (defun autoformat-message-current-function-name ()
   "Return name of the current function as string."
   (autoformat-message-up-list-until-nil
-   (when-let ((sexp (sexp-at-point)))
+   (when-let* ((sexp (sexp-at-point)))
      (when (listp sexp)
        (let ((type (car sexp))
              (name (nth 1 sexp)))
@@ -232,7 +232,7 @@ Argument ARGS is a list of items to be formatted and concatenated."
   (interactive)
   (let ((name (autoformat-message-current-function-name)))
     (save-excursion
-      (when-let ((start (autoformat-message-up-list-until-nil
+      (when-let* ((start (autoformat-message-up-list-until-nil
                          (pcase (sexp-at-point)
                            (`(cond ,(pred listp) . ,_rest)
                             (point))))))
@@ -281,7 +281,7 @@ Argument ARGS is a list of items to be formatted and concatenated."
   (interactive)
   (save-excursion
     (autoformat-message-up-list-until-nil
-     (when-let ((sexp (sexp-at-point)))
+     (when-let* ((sexp (sexp-at-point)))
        (when (listp sexp)
          (let ((type (car sexp)))
            (when (memq type autoformat-message-types)
@@ -292,7 +292,7 @@ Argument ARGS is a list of items to be formatted and concatenated."
 
 Argument ITEM is the string to be inserted into the buffer."
   (apply #'insert
-         (if-let ((current-word
+         (if-let* ((current-word
                    (symbol-at-point)))
              (progn
                (if
